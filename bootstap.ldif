@@ -1,0 +1,46 @@
+dn: ou=people,dc=softcloud,dc=dev
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,dc=softcloud,dc=dev
+objectClass: organizationalUnit
+ou: groups
+
+dn: cn=users,ou=groups,dc=softcloud,dc=dev
+objectClass: posixGroup
+cn: users
+gidNumber: 5000
+memberUid: alice
+memberUid: user
+
+dn: uid=alice,ou=people,dc=softcloud,dc=dev
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: alice
+sn: Alice
+givenName: Alice
+cn: Alice
+displayName: Alice
+uidNumber: 10000
+gidNumber: 5000
+userPassword: alicepassword
+gecos: Alice
+loginShell: /bin/bash
+homeDirectory: /home/alice
+
+dn: uid=user,ou=people,dc=softcloud,dc=dev
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: user
+sn: User
+givenName: Software Cloud User
+cn: Software Cloud User
+displayName: Software Cloud User
+uidNumber: 10001
+gidNumber: 5000
+userPassword: userpassword
+gecos: User
+loginShell: /bin/bash
+homeDirectory: /home/user
