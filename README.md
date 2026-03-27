@@ -1,27 +1,67 @@
 # LDAP
 
-1. [Wait for it](#wait-for-it)
-2. [Initial setup](#initial-setup)
-3. [Development](#development)
-4. [Production and deployment](#production-and-deployment)
+OpenLDAP for **softcloud.dev** — single-server setup with bootstrap users and a Vault bind account.
 
-This repository: [github.com/soft-cloud-dev/ldap](https://github.com/soft-cloud-dev/ldap)
+## Quick start
 
-Prerequisites: *slapd*, *ldap-utils*
-LDAP domain: softcloud.dev
-Schemas: *cosine*, *nis*, *inetorgperson*
-
-## Wait for it
 ```bash
-while true ldapsearch -Y EXTERNAL -H ldapi:/// -b "cn=config" -s base >/dev/null 2>&1 -Y EXTERNAL -H ldapi:/// -b "cn=config" -s base >/dev/null 2>&1; do echo "Waiting for LDAP"; sleep 1; done
+podman kube play deploy/podman-kube/ldap.yaml
 ```
 
-## Initial setup
+Re-deploy:
+```bash
+podman kube play --replace deploy/podman-kube/ldap.yaml
+```
 
-1. [Load schemas](#load-schemas)
-2. [Generate admin password hash](#generate-admin-password-hash)
-3. [Set up domain name](#set-up-domain-name)
-4. [Bootstrap database](#bootstrap-database)
+Tear down (keeps volumes):
+```bash
+podman kube down deploy/podman-kube/ldap.yaml
+```
+
+## Test
+
+```bash
+ldapsearch -x -H ldap://127.0.0.1:3389 \
+  -b dc=softcloud,dc=dev \
+  -D "cn=admin,dc=softcloud,dc=dev" \
+  -w "$LDAP_ADMIN_PASSWORD"
+```
+
+## What's inside
+
+| Resource | Purpose |
+|---|---|
+| `Secret/ldap-auth` | Admin & config passwords — **change before use** |
+| `ConfigMap/ldap-bootstrap` | OUs, sample users (alice, user), Vault service account |
+| `PVC/ldap-data` | Persistent LDAP database (`/var/lib/ldap`) |
+| `Deployment/ldap` | `osixia/openldap:1.5.0`, TLS off, host port 3389 |
+| `Service/ldap` | ClusterIP on port 389 |
+
+## Vault integration
+
+Bind DN: `uid=vault,ou=people,dc=softcloud,dc=dev`
+Bind password: set in the bootstrap ConfigMap (`change-me-vault-password`)
+
+On an existing instance, apply ACLs from [vault-access.ldif](vault-access.ldif):
+
+```bash
+export LDAP_BASE_DN="dc=softcloud,dc=dev"
+
+sed "s|{{ LDAP_BASE_DN }}|$LDAP_BASE_DN|g" vault-access.ldif | \
+  podman exec -i ldap-pod-ldap ldapmodify -Y EXTERNAL -H ldapi:///
+```
+
+> **Warning:** `vault-access.ldif` replaces the full `olcAccess` set on `olcDatabase={1}mdb`. Export and merge your existing ACLs first on non-fresh instances.
+
+## Manual setup (bare metal)
+
+<details>
+<summary>Expand for raw slapd instructions</summary>
+
+### Wait for slapd
+```bash
+while ! ldapsearch -Y EXTERNAL -H ldapi:/// -b "cn=config" -s base >/dev/null 2>&1; do sleep 1; done
+```
 
 ### Load schemas
 ```bash
@@ -30,12 +70,12 @@ ldapadd -Y EXTERNAL -H ldapi:/// -f /etc/ldap/schema/nis.ldif 2>/dev/null || tru
 ldapadd -Y EXTERNAL -H ldapi:/// -f /etc/ldap/schema/inetorgperson.ldif 2>/dev/null || true
 ```
 
-### Generate admin password hash
+### Configure domain
 ```bash
+export LDAP_DOMAIN=softcloud.dev
+export LDAP_BASE_DN="dc=$(echo $LDAP_DOMAIN | sed 's/\./,dc=/g')"
 export ADMIN_PASS_HASH=$(slappasswd -s "$LDAP_ADMIN_PASSWORD")
-```
 
-```bash
 cat <<EOF | ldapmodify -Y EXTERNAL -H ldapi:///
 dn: olcDatabase={1}mdb,cn=config
 changetype: modify
@@ -50,27 +90,4 @@ olcRootPW: $ADMIN_PASS_HASH
 EOF
 ```
 
-### Set up domain name
-```bash
-export LDAP_DOMAIN=softcloud.dev
-export LDAP_BASE_DN="dc=$(echo $LDAP_DOMAIN | sed 's/\./,dc=/g')"
-```
-
-### Bootstrap database
-Use default `bootstap.ldif` from this repository.
-```bash
-ldapadd -x -D "cn=admin,$LDAP_BASE_DN" -w "$LDAP_ADMIN_PASSWORD" -f   -f <(curl -fsSL https://raw.githubusercontent.com/soft-cloud-dev/ldap/main/bootstrap.ldif)
-```
-
-## Development
-
-Alternative docker setup for development is included in the repository.
-```bash
-git clone github.com/soft-cloud-dev/ldap
-cd ldap
-docker compose up
-```
-
-## Production and deployment
-
-For production LDAP helm chart will be provided.
+</details>
