@@ -75,7 +75,7 @@ docker compose up
 
 For production LDAP helm chart will be provided.
 
-### Podman kube apply
+### Podman kube play
 
 A Podman-oriented Kubernetes manifest is available at [deploy/podman-kube/ldap.yaml](/Users/user/Projects/ldap/deploy/podman-kube/ldap.yaml). It follows the same basic shape as the OpenStack Helm LDAP chart:
 
@@ -83,8 +83,10 @@ A Podman-oriented Kubernetes manifest is available at [deploy/podman-kube/ldap.y
 - persistent storage for `/var/lib/ldap` and `/etc/ldap/slapd.d`
 - service on port `389`
 - bootstrap data loaded from this repository's [bootstrap.ldif](/Users/user/Projects/ldap/bootstrap.ldif)
+- a real Vault bind account from [vault-service-account.ldif](/Users/user/Projects/ldap/vault-service-account.ldif)
+- OpenLDAP ACL updates from [vault-access.ldif](/Users/user/Projects/ldap/vault-access.ldif)
 
-The manifest uses `docker.io/osixia/openldap:1.5.0`, disables TLS for local Podman use, and publishes LDAP on host port `3389` to avoid privileged port binding problems on rootless Podman.
+The manifest uses `docker.io/osixia/openldap:1.5.0`, disables TLS for local Podman use, publishes LDAP on host port `3389`, and bootstraps a Vault service account that Vault can rotate because it exists as a normal LDAP entry under `ou=people`.
 
 Before applying it, change the `stringData` values in [deploy/podman-kube/ldap.yaml](/Users/user/Projects/ldap/deploy/podman-kube/ldap.yaml):
 
@@ -94,14 +96,43 @@ stringData:
   LDAP_CONFIG_PASSWORD: change-me-config-password
 ```
 
-Apply the deployment:
+Also change the initial Vault bind password in [deploy/podman-kube/ldap.yaml](/Users/user/Projects/ldap/deploy/podman-kube/ldap.yaml):
+
+```yaml
+userPassword: change-me-vault-password
+```
+
+Run the deployment locally with Podman:
 
 ```bash
-podman kube apply -f deploy/podman-kube/ldap.yaml
+podman kube play deploy/podman-kube/ldap.yaml
 ```
 
 Then test it from the host:
 
 ```bash
 ldapsearch -x -H ldap://127.0.0.1:3389 -b dc=softcloud,dc=dev -D "cn=admin,dc=softcloud,dc=dev" -w "$LDAP_ADMIN_PASSWORD"
+```
+
+Vault should bind with:
+
+- Bind DN: `uid=vault,ou=people,dc=softcloud,dc=dev`
+- Bind password: the `userPassword` set in `60-vault-service-account.ldif`
+- User DN: `ou=people,dc=softcloud,dc=dev`
+- Group DN: `ou=groups,dc=softcloud,dc=dev`
+- User attribute: `uid`
+- Group filter: `(&(objectClass=posixGroup)(memberUid={{.Username}}))`
+- Group attribute: `cn`
+
+On an already-running LDAP instance with persistent volumes, bootstrap files are not re-applied automatically. Add the Vault service account and ACLs manually:
+
+```bash
+export LDAP_BASE_DN="dc=softcloud,dc=dev"
+export LDAP_ADMIN_PASSWORD='change-me-admin-password'
+
+sed "s|{{ LDAP_BASE_DN }}|$LDAP_BASE_DN|g" vault-service-account.ldif | \
+  podman exec -i ldap-pod-ldap ldapadd -x -D "cn=admin,$LDAP_BASE_DN" -w "$LDAP_ADMIN_PASSWORD"
+
+sed "s|{{ LDAP_BASE_DN }}|$LDAP_BASE_DN|g" vault-access.ldif | \
+  podman exec -i ldap-pod-ldap ldapmodify -Y EXTERNAL -H ldapi:///
 ```

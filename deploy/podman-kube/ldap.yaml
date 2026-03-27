@@ -59,6 +59,17 @@ data:
     gecos: User
     loginShell: /bin/bash
     homeDirectory: /home/user
+  60-vault-service-account.ldif: |
+    dn: uid=vault,ou=people,{{ LDAP_BASE_DN }}
+    objectClass: inetOrgPerson
+    uid: vault
+    sn: Vault
+    givenName: Vault
+    cn: Vault Service Account
+    displayName: Vault Service Account
+    userPassword: change-me-vault-password
+    description: Bind account for HashiCorp Vault LDAP secrets engine
+
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
