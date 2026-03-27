@@ -57,9 +57,9 @@ export LDAP_BASE_DN="dc=$(echo $LDAP_DOMAIN | sed 's/\./,dc=/g')"
 ```
 
 ### Bootstrap database
-Use default `bootstap.ldif` from this repository.
+Use default `bootstrap.ldif` from this repository.
 ```bash
-ldapadd -x -D "cn=admin,$LDAP_BASE_DN" -w "$LDAP_ADMIN_PASSWORD" -f   -f <(curl -fsSL https://raw.githubusercontent.com/soft-cloud-dev/ldap/main/bootstrap.ldif)
+ldapadd -x -D "cn=admin,$LDAP_BASE_DN" -w "$LDAP_ADMIN_PASSWORD" -f <(curl -fsSL https://raw.githubusercontent.com/soft-cloud-dev/ldap/main/bootstrap.ldif)
 ```
 
 ## Development
@@ -74,3 +74,34 @@ docker compose up
 ## Production and deployment
 
 For production LDAP helm chart will be provided.
+
+### Podman kube apply
+
+A Podman-oriented Kubernetes manifest is available at [deploy/podman-kube/ldap.yaml](/Users/user/Projects/ldap/deploy/podman-kube/ldap.yaml). It follows the same basic shape as the OpenStack Helm LDAP chart:
+
+- single LDAP server
+- persistent storage for `/var/lib/ldap` and `/etc/ldap/slapd.d`
+- service on port `389`
+- bootstrap data loaded from this repository's [bootstrap.ldif](/Users/user/Projects/ldap/bootstrap.ldif)
+
+The manifest uses `docker.io/osixia/openldap:1.5.0`, disables TLS for local Podman use, and publishes LDAP on host port `3389` to avoid privileged port binding problems on rootless Podman.
+
+Before applying it, change the `stringData` values in [deploy/podman-kube/ldap.yaml](/Users/user/Projects/ldap/deploy/podman-kube/ldap.yaml):
+
+```yaml
+stringData:
+  LDAP_ADMIN_PASSWORD: change-me-admin-password
+  LDAP_CONFIG_PASSWORD: change-me-config-password
+```
+
+Apply the deployment:
+
+```bash
+podman kube apply -f deploy/podman-kube/ldap.yaml
+```
+
+Then test it from the host:
+
+```bash
+ldapsearch -x -H ldap://127.0.0.1:3389 -b dc=softcloud,dc=dev -D "cn=admin,dc=softcloud,dc=dev" -w "$LDAP_ADMIN_PASSWORD"
+```

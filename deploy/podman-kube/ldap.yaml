@@ -1,0 +1,159 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ldap-auth
+type: Opaque
+stringData:
+  LDAP_ADMIN_PASSWORD: change-me-admin-password
+  LDAP_CONFIG_PASSWORD: change-me-config-password
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ldap-bootstrap
+data:
+  50-bootstrap.ldif: |
+    dn: ou=people,{{ LDAP_BASE_DN }}
+    objectClass: organizationalUnit
+    ou: people
+
+    dn: ou=groups,{{ LDAP_BASE_DN }}
+    objectClass: organizationalUnit
+    ou: groups
+
+    dn: cn=users,ou=groups,{{ LDAP_BASE_DN }}
+    objectClass: posixGroup
+    cn: users
+    gidNumber: 5000
+    memberUid: alice
+    memberUid: user
+
+    dn: uid=alice,ou=people,{{ LDAP_BASE_DN }}
+    objectClass: inetOrgPerson
+    objectClass: posixAccount
+    objectClass: shadowAccount
+    uid: alice
+    sn: Alice
+    givenName: Alice
+    cn: Alice
+    displayName: Alice
+    uidNumber: 10000
+    gidNumber: 5000
+    userPassword: alicepassword
+    gecos: Alice
+    loginShell: /bin/bash
+    homeDirectory: /home/alice
+
+    dn: uid=user,ou=people,{{ LDAP_BASE_DN }}
+    objectClass: inetOrgPerson
+    objectClass: posixAccount
+    objectClass: shadowAccount
+    uid: user
+    sn: User
+    givenName: Software Cloud User
+    cn: Software Cloud User
+    displayName: Software Cloud User
+    uidNumber: 10001
+    gidNumber: 5000
+    userPassword: userpassword
+    gecos: User
+    loginShell: /bin/bash
+    homeDirectory: /home/user
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ldap-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ldap-config
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ldap
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ldap
+  template:
+    metadata:
+      labels:
+        app: ldap
+    spec:
+      containers:
+        - name: ldap
+          image: docker.io/osixia/openldap:1.5.0
+          args:
+            - --copy-service
+          env:
+            - name: LDAP_ORGANISATION
+              value: Soft Cloud
+            - name: LDAP_DOMAIN
+              value: softcloud.dev
+            - name: LDAP_BASE_DN
+              value: dc=softcloud,dc=dev
+            - name: LDAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ldap-auth
+                  key: LDAP_ADMIN_PASSWORD
+            - name: LDAP_CONFIG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ldap-auth
+                  key: LDAP_CONFIG_PASSWORD
+            - name: LDAP_TLS
+              value: "false"
+            - name: LDAP_LOG_LEVEL
+              value: "256"
+          ports:
+            - name: ldap
+              containerPort: 389
+              hostPort: 3389
+              protocol: TCP
+          volumeMounts:
+            - name: ldap-data
+              mountPath: /var/lib/ldap
+            - name: ldap-config
+              mountPath: /etc/ldap/slapd.d
+            - name: ldap-bootstrap
+              mountPath: /container/service/slapd/assets/config/bootstrap/ldif/custom
+      volumes:
+        - name: ldap-data
+          persistentVolumeClaim:
+            claimName: ldap-data
+        - name: ldap-config
+          persistentVolumeClaim:
+            claimName: ldap-config
+        - name: ldap-bootstrap
+          configMap:
+            name: ldap-bootstrap
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ldap
+spec:
+  selector:
+    app: ldap
+  ports:
+    - name: ldap
+      port: 389
+      targetPort: 389
+      protocol: TCP

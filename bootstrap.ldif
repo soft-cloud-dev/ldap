@@ -1,19 +1,19 @@
-dn: ou=people,dc=softcloud,dc=dev
+dn: ou=people,{{ LDAP_BASE_DN }}
 objectClass: organizationalUnit
 ou: people
 
-dn: ou=groups,dc=softcloud,dc=dev
+dn: ou=groups,{{ LDAP_BASE_DN }}
 objectClass: organizationalUnit
 ou: groups
 
-dn: cn=users,ou=groups,dc=softcloud,dc=dev
+dn: cn=users,ou=groups,{{ LDAP_BASE_DN }}
 objectClass: posixGroup
 cn: users
 gidNumber: 5000
 memberUid: alice
 memberUid: user
 
-dn: uid=alice,ou=people,dc=softcloud,dc=dev
+dn: uid=alice,ou=people,{{ LDAP_BASE_DN }}
 objectClass: inetOrgPerson
 objectClass: posixAccount
 objectClass: shadowAccount
@@ -29,7 +29,7 @@ gecos: Alice
 loginShell: /bin/bash
 homeDirectory: /home/alice
 
-dn: uid=user,ou=people,dc=softcloud,dc=dev
+dn: uid=user,ou=people,{{ LDAP_BASE_DN }}
 objectClass: inetOrgPerson
 objectClass: posixAccount
 objectClass: shadowAccount
